@@ -1,72 +1,23 @@
 import express from "express";
 import cors from "cors";
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
 import {
   peekNextReceiptNumber,
   commitNextReceiptNumber,
 } from "../lib/receiptStore.js";
+import {
+  validateContact,
+  validateEmail,
+  saveContact,
+  saveSubscriber,
+  getContacts,
+} from "../lib/enquiryStore.js";
+import { sendEnquiryEmail } from "../lib/mailer.js";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 3001;
-const DATA_DIR = path.join(__dirname, "data");
-const DATA_FILE = path.join(DATA_DIR, "contacts.json");
-const SUBSCRIBERS_FILE = path.join(DATA_DIR, "subscribers.json");
 
 app.use(cors());
 app.use(express.json());
-
-function ensureDataFile() {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-  }
-  if (!fs.existsSync(DATA_FILE)) {
-    fs.writeFileSync(DATA_FILE, "[]", "utf-8");
-  }
-  if (!fs.existsSync(SUBSCRIBERS_FILE)) {
-    fs.writeFileSync(SUBSCRIBERS_FILE, "[]", "utf-8");
-  }
-}
-
-function readContacts() {
-  ensureDataFile();
-  return JSON.parse(fs.readFileSync(DATA_FILE, "utf-8"));
-}
-
-function writeContacts(contacts) {
-  ensureDataFile();
-  fs.writeFileSync(DATA_FILE, JSON.stringify(contacts, null, 2), "utf-8");
-}
-
-function readSubscribers() {
-  ensureDataFile();
-  return JSON.parse(fs.readFileSync(SUBSCRIBERS_FILE, "utf-8"));
-}
-
-function writeSubscribers(subscribers) {
-  ensureDataFile();
-  fs.writeFileSync(SUBSCRIBERS_FILE, JSON.stringify(subscribers, null, 2), "utf-8");
-}
-
-function validateEmail(email) {
-  if (!email?.trim()) return "Email is required";
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return "Invalid email address";
-  return null;
-}
-
-function validateContact(body) {
-  const { name, phone, email, propertyType } = body;
-
-  if (!name?.trim()) return "Name is required";
-  if (!phone?.trim()) return "Phone number is required";
-  if (!email?.trim()) return "Email is required";
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return "Invalid email address";
-  if (!propertyType?.trim()) return "Property type is required";
-
-  return null;
-}
 
 app.get("/api/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
@@ -92,63 +43,70 @@ app.post("/api/receipt/commit", async (_req, res) => {
   }
 });
 
-app.post("/api/contact", (req, res) => {
+app.post("/api/contact", async (req, res) => {
   const error = validateContact(req.body);
-
   if (error) {
     return res.status(400).json({ error });
   }
 
-  const submission = {
-    id: Date.now().toString(),
-    name: req.body.name.trim(),
-    phone: req.body.phone.trim(),
-    email: req.body.email.trim(),
-    propertyType: req.body.propertyType.trim(),
-    message: req.body.message?.trim() || "",
-    createdAt: new Date().toISOString(),
-  };
+  try {
+    const record = await saveContact(req.body);
+    console.log("[contact] New submission:", record.name, record.phone);
 
-  const contacts = readContacts();
-  contacts.push(submission);
-  writeContacts(contacts);
+    try {
+      const result = await sendEnquiryEmail(record);
+      if (!result.sent) console.warn("[contact] email not sent:", result.reason);
+    } catch (mailErr) {
+      console.error("[contact] email error:", mailErr);
+    }
 
-  console.log("[contact] New submission:", submission.name, submission.phone);
-
-  res.status(201).json({ success: true, id: submission.id });
+    res.status(201).json({ success: true, id: record.id });
+  } catch (err) {
+    console.error("[contact]", err);
+    res.status(500).json({ error: "Could not save your enquiry. Please try again." });
+  }
 });
 
-app.post("/api/subscribe", (req, res) => {
-  const error = validateEmail(req.body?.email);
+app.get("/api/enquiries", async (req, res) => {
+  const expected = process.env.ENQUIRIES_TOKEN;
+  if (!expected) {
+    return res.status(500).json({
+      error:
+        "Admin access is not configured. Set the ENQUIRIES_TOKEN environment variable.",
+    });
+  }
+  const provided = req.headers["x-enquiries-token"] || req.query?.key;
+  if (provided !== expected) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  try {
+    const contacts = await getContacts();
+    res.json({ contacts });
+  } catch (err) {
+    console.error("[enquiries]", err);
+    res.status(500).json({ error: "Could not load enquiries" });
+  }
+});
 
+app.post("/api/subscribe", async (req, res) => {
+  const error = validateEmail(req.body?.email);
   if (error) {
     return res.status(400).json({ error });
   }
 
-  const email = req.body.email.trim().toLowerCase();
-  const subscribers = readSubscribers();
-
-  const alreadySubscribed = subscribers.some((s) => s.email === email);
-
-  if (alreadySubscribed) {
-    return res.json({ success: true, message: "Already subscribed" });
+  try {
+    const { record, alreadySubscribed } = await saveSubscriber(req.body.email);
+    if (alreadySubscribed) {
+      return res.json({ success: true, message: "Already subscribed" });
+    }
+    console.log("[subscribe] New subscriber:", record.email);
+    res.status(201).json({ success: true, id: record.id });
+  } catch (err) {
+    console.error("[subscribe]", err);
+    res.status(500).json({ error: "Could not subscribe. Please try again." });
   }
-
-  const subscription = {
-    id: Date.now().toString(),
-    email,
-    createdAt: new Date().toISOString(),
-  };
-
-  subscribers.push(subscription);
-  writeSubscribers(subscribers);
-
-  console.log("[subscribe] New subscriber:", email);
-
-  res.status(201).json({ success: true, id: subscription.id });
 });
 
 app.listen(PORT, () => {
-  ensureDataFile();
   console.log(`Contact API running on http://localhost:${PORT}`);
 });

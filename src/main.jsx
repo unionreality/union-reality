@@ -12,6 +12,7 @@ import ContactPage from "./pages/Contact";
 import Project from "./pages/Project";
 import Constructions from "./components/Constructions";
 import Receipt from "./pages/Receipt";
+import Enquiries from "./pages/Enquiries";
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
@@ -25,6 +26,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(
         <Route path="/project" element={<Project />} />
         <Route path="/constructions" element={<Constructions />} />
         <Route path="/receipt" element={<Receipt />} />
+        <Route path="/enquiries" element={<Enquiries />} />
       </Routes>
       </ContactProvider>
     </BrowserRouter>
