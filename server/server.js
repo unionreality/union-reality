@@ -3,6 +3,10 @@ import cors from "cors";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import {
+  peekNextReceiptNumber,
+  commitNextReceiptNumber,
+} from "../lib/receiptStore.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -66,6 +70,26 @@ function validateContact(body) {
 
 app.get("/api/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
+});
+
+app.get("/api/receipt/next", async (_req, res) => {
+  try {
+    const receiptNo = await peekNextReceiptNumber();
+    res.json({ receiptNo });
+  } catch (err) {
+    console.error("[receipt/next]", err);
+    res.status(500).json({ error: "Could not read receipt counter" });
+  }
+});
+
+app.post("/api/receipt/commit", async (_req, res) => {
+  try {
+    const receiptNo = await commitNextReceiptNumber();
+    res.json({ receiptNo });
+  } catch (err) {
+    console.error("[receipt/commit]", err);
+    res.status(500).json({ error: "Could not update receipt counter" });
+  }
 });
 
 app.post("/api/contact", (req, res) => {
