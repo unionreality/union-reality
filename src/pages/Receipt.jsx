@@ -250,9 +250,13 @@ export default function Receipt() {
 
             <Divider>Customer Details</Divider>
             <div style={{ display: "flex", gap: "10px" }}>
-              <div style={{ width: "90px" }}>
+              <div style={{ width: "110px" }}>
                 <FormGroup label="Title">
-                  <Input value={form.salutation} onChange={(v) => update("salutation", v)} />
+                  <Select
+                    value={form.salutation}
+                    onChange={(v) => update("salutation", v)}
+                    options={["Mr.", "Mrs.", "Ms.", "Dr.", "M/s."]}
+                  />
                 </FormGroup>
               </div>
               <div style={{ flex: 1 }}>
@@ -584,6 +588,34 @@ function Input({ value, onChange, type = "text", readOnly = false }) {
         fontFamily: "system-ui, sans-serif",
       }}
     />
+  );
+}
+
+function Select({ value, onChange, options }) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      style={{
+        width: "100%",
+        boxSizing: "border-box",
+        padding: "8px 10px",
+        border: "1px solid #cfd6e4",
+        borderRadius: "6px",
+        fontSize: "13px",
+        color: "#111",
+        background: "#fff",
+        outline: "none",
+        fontFamily: "system-ui, sans-serif",
+        cursor: "pointer",
+      }}
+    >
+      {options.map((opt) => (
+        <option key={opt} value={opt}>
+          {opt}
+        </option>
+      ))}
+    </select>
   );
 }
 
