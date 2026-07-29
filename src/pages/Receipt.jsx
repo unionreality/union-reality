@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 
@@ -75,24 +75,24 @@ const todayStr = () => {
 };
 
 const INITIAL = {
-  receiptNo: "",
+  receiptNo: "URC 11 013 21318",
   date: todayStr(),
   // property
-  project: "KSRTC LAYOUT",
-  siteNo: "72 & 58",
-  measurement: "1200 Sqft North Facing (800 Sqft + 400 Sqft)",
+  project: "",
+  siteNo: "",
+  measurement: "",
   location: "",
   // customer
-  clientName: "Ajay Kumar M",
+  clientName: "",
   salutation: "Mr.",
-  mobile: "+91 63666 54009",
-  email: "rohanbnglr95@gmail.com",
-  address: "Kengeri Satellite Town",
+  mobile: "+91 ",
+  email: "",
+  address: "",
   // payment
   items: [
     {
-      description: "Amount received towards Site No. 72 & 58 at KSRTC Layout",
-      amount: 100000,
+      description: "",
+      amount: 0,
     },
   ],
 };
@@ -115,11 +115,6 @@ const detailLine = { fontSize: "13.5px", color: TEXT, margin: "3px 0", lineHeigh
 
 /* ------------------------------ page ------------------------------ */
 
-const raf = () =>
-  new Promise((resolve) =>
-    requestAnimationFrame(() => requestAnimationFrame(resolve))
-  );
-
 async function waitForImages(node) {
   if (!node) return;
   const imgs = Array.from(node.querySelectorAll("img"));
@@ -138,31 +133,7 @@ async function waitForImages(node) {
 export default function Receipt() {
   const [form, setForm] = useState(INITIAL);
   const [generating, setGenerating] = useState(false);
-  const [numberLoading, setNumberLoading] = useState(true);
   const receiptRef = useRef(null);
-
-  // Fetch the next auto-incrementing receipt number from the server on load.
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      try {
-        const res = await fetch("/api/receipt/next");
-        if (!res.ok) throw new Error("bad status");
-        const data = await res.json();
-        if (active && data.receiptNo) {
-          setForm((f) => ({ ...f, receiptNo: data.receiptNo }));
-        }
-      } catch {
-        // Server unreachable — leave a manual placeholder so the tool still works.
-        if (active) setForm((f) => ({ ...f, receiptNo: "URC 11 013 21318" }));
-      } finally {
-        if (active) setNumberLoading(false);
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, []);
 
   const total = form.items.reduce((sum, it) => sum + (Number(it.amount) || 0), 0);
 
@@ -184,24 +155,7 @@ export default function Receipt() {
     if (!receiptRef.current) return;
     setGenerating(true);
     try {
-      // Reserve (auto-increment + persist) the receipt number on the server.
-      let receiptNo = form.receiptNo;
-      try {
-        const res = await fetch("/api/receipt/commit", { method: "POST" });
-        if (!res.ok) throw new Error("commit failed");
-        const data = await res.json();
-        if (data.receiptNo) receiptNo = data.receiptNo;
-      } catch {
-        alert(
-          "Could not reserve a new receipt number from the server. The PDF will use the currently shown number instead."
-        );
-      }
-
-      // Render the reserved number into the receipt before capturing.
-      if (receiptNo !== form.receiptNo) {
-        setForm((f) => ({ ...f, receiptNo }));
-        await raf();
-      }
+      const receiptNo = form.receiptNo;
 
       await waitForImages(receiptRef.current);
 
@@ -231,19 +185,6 @@ export default function Receipt() {
 
       const fileName = (receiptNo || "payment-receipt").trim() + ".pdf";
       pdf.save(fileName);
-
-      // Advance the displayed number to the next available one.
-      try {
-        const res = await fetch("/api/receipt/next");
-        if (res.ok) {
-          const data = await res.json();
-          if (data.receiptNo) {
-            setForm((f) => ({ ...f, receiptNo: data.receiptNo }));
-          }
-        }
-      } catch {
-        // ignore — not critical
-      }
     } catch (err) {
       console.error("PDF generation failed", err);
       alert("Could not generate the PDF. Please try again.");
@@ -283,14 +224,10 @@ export default function Receipt() {
               fontFamily: "system-ui, sans-serif",
             }}
           >
-            <FormGroup label="Receipt No (auto-generated)">
-              <Input
-                value={numberLoading ? "Loading…" : form.receiptNo}
-                onChange={() => {}}
-                readOnly
-              />
+            <FormGroup label="Receipt No">
+              <Input value={form.receiptNo} onChange={(v) => update("receiptNo", v)} />
               <div style={{ fontSize: "11px", color: "#8a97b8", marginTop: "4px" }}>
-                Automatically incremented and stored on the server.
+                Enter the receipt number manually (e.g. URC 11 013 21318).
               </div>
             </FormGroup>
             <FormGroup label="Date">
@@ -394,18 +331,18 @@ export default function Receipt() {
 
             <button
               onClick={handleDownload}
-              disabled={generating || numberLoading}
+              disabled={generating}
               style={{
                 marginTop: "18px",
                 width: "100%",
-                background: generating || numberLoading ? "#8a97b8" : NAVY,
+                background: generating ? "#8a97b8" : NAVY,
                 color: "#fff",
                 border: "none",
                 borderRadius: "8px",
                 padding: "12px 16px",
                 fontSize: "15px",
                 fontWeight: 700,
-                cursor: generating || numberLoading ? "default" : "pointer",
+                cursor: generating ? "default" : "pointer",
               }}
             >
               {generating ? "Generating…" : "Download PDF"}
