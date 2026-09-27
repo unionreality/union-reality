@@ -81,12 +81,14 @@ const INITIAL = {
   project: "",
   siteNo: "",
   measurement: "",
+  facing: "",
   location: "",
   // customer
   clientName: "",
   salutation: "Mr.",
   mobile: "+91 ",
   email: "",
+  recipientEmails: "",
   address: "",
   // payment
   items: [
@@ -130,9 +132,66 @@ async function waitForImages(node) {
   );
 }
 
-export default function Receipt() {
+function parseRecipientEmails(form) {
+  const fromList = (form.recipientEmails || "")
+    .split(/[,;]+/)
+    .map((e) => e.trim())
+    .filter(Boolean);
+  const emails = new Set(fromList);
+  if (form.email?.trim()) {
+    emails.add(form.email.trim());
+  }
+  return [...emails];
+}
+
+function buildSendEmailPayload(form, total) {
+  return {
+    toEmails: parseRecipientEmails(form),
+    receiptNo: form.receiptNo || undefined,
+    date: form.date || undefined,
+    project: form.project || undefined,
+    siteNo: form.siteNo || undefined,
+    measurement: form.measurement || undefined,
+    facing: form.facing || undefined,
+    location: form.location || undefined,
+    clientName: form.clientName || undefined,
+    salutation: form.salutation || undefined,
+    mobile: form.mobile || undefined,
+    customerEmail: form.email || undefined,
+    address: form.address || undefined,
+    bookingAmount: total > 0 ? total : undefined,
+    items: form.items
+      .filter((it) => (Number(it.amount) || 0) > 0 || it.description?.trim())
+      .map((it) => ({
+        description: it.description?.trim() || "Booking amount",
+        amount: Number(it.amount) || 0,
+      })),
+  };
+}
+
+async function postSendReceiptEmail(payload) {
+  const directBase = (import.meta.env.VITE_EMAIL_SERVICE_URL || "").replace(/\/$/, "");
+  const url = directBase
+    ? `${directBase}/api/v1/receipt/send-email`
+    : "/api/receipt/send-email";
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.message || "Could not send the receipt email.");
+  }
+  return data;
+}
+
+export default function ReceiptEmail() {
   const [form, setForm] = useState(INITIAL);
   const [generating, setGenerating] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [status, setStatus] = useState(null);
   const receiptRef = useRef(null);
 
   const total = form.items.reduce((sum, it) => sum + (Number(it.amount) || 0), 0);
@@ -150,6 +209,33 @@ export default function Receipt() {
 
   const removeItem = (idx) =>
     setForm((f) => ({ ...f, items: f.items.filter((_, i) => i !== idx) }));
+
+  const handleSendEmail = async () => {
+    const toEmails = parseRecipientEmails(form);
+    if (!toEmails.length) {
+      setStatus({ type: "error", message: "Enter at least one recipient email." });
+      return;
+    }
+
+    setSending(true);
+    setStatus(null);
+    try {
+      const payload = buildSendEmailPayload(form, total);
+      const data = await postSendReceiptEmail(payload);
+      setStatus({
+        type: "success",
+        message: data.message || "Receipt email sent successfully.",
+      });
+    } catch (err) {
+      console.error("Send email failed", err);
+      setStatus({
+        type: "error",
+        message: err.message || "Could not send the receipt email.",
+      });
+    } finally {
+      setSending(false);
+    }
+  };
 
   const handleDownload = async () => {
     if (!receiptRef.current) return;
@@ -205,10 +291,10 @@ export default function Receipt() {
             marginBottom: "4px",
           }}
         >
-          Payment Receipt Generator
+          Receipt &amp; Email
         </h1>
         <p style={{ fontFamily: "system-ui, sans-serif", color: "#555", fontSize: "13px", marginBottom: "20px" }}>
-          Internal tool — fill in the details and download the receipt as a PDF.
+          Fill in the booking details, preview the receipt, download the PDF, or send the confirmation email with PDF attached.
         </p>
 
         <div style={{ display: "flex", flexWrap: "wrap", gap: "24px", alignItems: "flex-start" }}>
@@ -244,6 +330,13 @@ export default function Receipt() {
             <FormGroup label="Measurement / Dimensions">
               <Input value={form.measurement} onChange={(v) => update("measurement", v)} />
             </FormGroup>
+            <FormGroup label="Facing (optional)">
+              <Input
+                value={form.facing}
+                onChange={(v) => update("facing", v)}
+                placeholder="NorthWest Facing"
+              />
+            </FormGroup>
             <FormGroup label="Location (optional)">
               <Input value={form.location} onChange={(v) => update("location", v)} />
             </FormGroup>
@@ -268,8 +361,23 @@ export default function Receipt() {
             <FormGroup label="Mobile Number">
               <Input value={form.mobile} onChange={(v) => update("mobile", v)} />
             </FormGroup>
-            <FormGroup label="Email">
-              <Input value={form.email} onChange={(v) => update("email", v)} />
+            <FormGroup label="Customer Email">
+              <Input
+                type="email"
+                value={form.email}
+                onChange={(v) => update("email", v)}
+                placeholder="customer@example.com"
+              />
+            </FormGroup>
+            <FormGroup label="Send To (optional extra emails)">
+              <Input
+                value={form.recipientEmails}
+                onChange={(v) => update("recipientEmails", v)}
+                placeholder="other@example.com, cc@example.com"
+              />
+              <div style={{ fontSize: "11px", color: "#8a97b8", marginTop: "4px" }}>
+                Comma-separated. Customer email above is always included when provided.
+              </div>
             </FormGroup>
             <FormGroup label="Address">
               <Input value={form.address} onChange={(v) => update("address", v)} />
@@ -335,7 +443,7 @@ export default function Receipt() {
 
             <button
               onClick={handleDownload}
-              disabled={generating}
+              disabled={generating || sending}
               style={{
                 marginTop: "18px",
                 width: "100%",
@@ -346,11 +454,44 @@ export default function Receipt() {
                 padding: "12px 16px",
                 fontSize: "15px",
                 fontWeight: 700,
-                cursor: generating ? "default" : "pointer",
+                cursor: generating || sending ? "default" : "pointer",
               }}
             >
               {generating ? "Generating…" : "Download PDF"}
             </button>
+
+            <button
+              type="button"
+              onClick={handleSendEmail}
+              disabled={sending || generating}
+              style={{
+                marginTop: "10px",
+                width: "100%",
+                background: sending ? "#8a97b8" : "#1a5f4a",
+                color: "#fff",
+                border: "none",
+                borderRadius: "8px",
+                padding: "12px 16px",
+                fontSize: "15px",
+                fontWeight: 700,
+                cursor: sending || generating ? "default" : "pointer",
+              }}
+            >
+              {sending ? "Sending…" : "Send receipt email"}
+            </button>
+
+            {status && (
+              <p
+                style={{
+                  marginTop: "12px",
+                  fontSize: "13px",
+                  lineHeight: 1.45,
+                  color: status.type === "success" ? "#1a5f4a" : "#c0392b",
+                }}
+              >
+                {status.message}
+              </p>
+            )}
           </div>
 
           {/* ------------------------- PREVIEW ------------------------- */}
@@ -438,6 +579,7 @@ function ReceiptDocument({ ref, form, total }) {
           <div style={detailLine}>Project / Layout Name: {form.project}</div>
           {form.siteNo && <div style={detailLine}>Site No: {form.siteNo}</div>}
           {form.measurement && <div style={detailLine}>Dimensions: {form.measurement}</div>}
+          {form.facing && <div style={detailLine}>Facing: {form.facing}</div>}
           {form.location && <div style={detailLine}>Location: {form.location}</div>}
         </div>
         <div style={{ flex: 1 }}>
