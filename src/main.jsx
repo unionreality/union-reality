@@ -11,7 +11,7 @@ import PortfolioPage from "./pages/Portfolio";
 import ContactPage from "./pages/Contact";
 import Project from "./pages/Project";
 import Constructions from "./components/Constructions";
-import Receipt from "./pages/Receipt";
+import ReceiptEmail from "./pages/ReceiptEmail";
 import Enquiries from "./pages/Enquiries";
 
 ReactDOM.createRoot(document.getElementById("root")).render(
@@ -25,7 +25,8 @@ ReactDOM.createRoot(document.getElementById("root")).render(
         <Route path="/contact" element={<ContactPage />} />
         <Route path="/project" element={<Project />} />
         <Route path="/constructions" element={<Constructions />} />
-        <Route path="/receipt" element={<Receipt />} />
+        <Route path="/receiptEmail" element={<ReceiptEmail />} />
+        <Route path="/receipt" element={<ReceiptEmail />} />
         <Route path="/enquiries" element={<Enquiries />} />
       </Routes>
       </ContactProvider>
