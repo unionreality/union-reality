@@ -12,7 +12,10 @@ import {
   getContacts,
 } from "../lib/enquiryStore.js";
 import { sendEnquiryEmail } from "../lib/mailer.js";
-import { forwardReceiptSendEmail } from "../lib/receiptEmailProxy.js";
+import {
+  forwardReceiptSendEmail,
+  checkEmailServiceReachability,
+} from "../lib/receiptEmailProxy.js";
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -42,6 +45,11 @@ app.post("/api/receipt/commit", async (_req, res) => {
     console.error("[receipt/commit]", err);
     res.status(500).json({ error: "Could not update receipt counter" });
   }
+});
+
+app.get("/api/receipt/email-service-health", async (_req, res) => {
+  const report = await checkEmailServiceReachability();
+  res.status(report.configured && report.ok ? 200 : 503).json(report);
 });
 
 app.post("/api/receipt/send-email", async (req, res) => {

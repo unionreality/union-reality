@@ -16,6 +16,8 @@ export default async function handler(req, res) {
       success: false,
       message: err.message || "Could not send receipt email.",
       errors: err.details?.errors,
+      upstreamUrl: err.details?.upstreamUrl,
+      upstreamStatus: err.details?.upstreamStatus,
     });
   }
 }
